@@ -34,6 +34,11 @@ class board:
             self.board[row][col] = value
         else:
             self.board[index] = value
+
+    def __call__(self, state):
+        # 更新棋盘状态
+        self.board = state
+        return self
     
     def rotate(self,times):
         for t in range(times):
@@ -58,6 +63,131 @@ class board:
     
     def flatten(self):
         return [item for sublist in self.board for item in sublist]
+    
+    def move_score(self,direction):
+        new_score=0
+        if direction=='w' or direction=='s':
+            self.rotate(1)
+        for b in self.board:
+            d=0
+            for c in b:
+                if c!=0:
+                    d=c
+                elif d==c:
+                    new_score+=2*2**c
+                    d=0
+        if direction=='w' or direction=='s':
+            self.rotate(3)
+        return new_score
+    
+    def moveable(self,direction):
+        if direction=='d':
+            self.rotate(2)
+        elif direction=='w':
+            self.rotate(1)
+        elif direction=='s':
+            self.rotate(3)
+        for b in self.board:
+            d=0
+            for c in b:
+                if c==0:
+                    return True
+                elif c==d:
+                    return True
+                d=c
+        if direction=='d':
+            self.rotate(2)
+        elif direction=='w':
+            self.rotate(3)
+        elif direction=='s':
+            self.rotate(1)
+        return False
+    
+    def move(self,direction):
+        new=board()
+        if direction=='d':
+            self.rotate(2)
+        elif direction=='w':
+            self.rotate(1)
+        elif direction=='s':
+            self.rotate(3)
+        e=0
+        for b in self.board:
+            c=[]
+            for a in b:
+                if a!=0:
+                    c.append(a)
+            d=[]
+            a=0
+            while True:
+                if len(c)==0:
+                    break
+                if a+1==len(c):
+                    d.append(c[a])
+                    break
+                if c[a]!=c[a+1]:
+                    d.append(c[a])
+                    a+=1
+                else:
+                    d.append(c[a]+1)
+                    a+=2
+                if a==len(c):
+                    break
+            for f in range(4-len(d)):
+                d.append(0)
+            new[e]=d
+            e+=1
+        if direction=='d':
+            self.rotate(2)
+        elif direction=='w':
+            self.rotate(3)
+        elif direction=='s':
+            self.rotate(1)
+        return new
+    
+    def max_in_corner(self):
+        sorted_board=sorted(self.flatten(), reverse=True)
+        return sorted_board[0]==self.board[0][0] or sorted_board[0]==self.board[0][3] or sorted_board[0]==self.board[3][0] or sorted_board[0]==self.board[3][3]
+    
+    def num_blocks(self):
+        return sum([1 for a in self.flatten() if a!=0])
+    
+    def normalize(self):
+        return [a/17 for a in self.flatten()]
+    
+    def normalize_2d(self):
+        return [[a/17 for a in row] for row in self.board]
+    
+    def snake(self):
+        reward=1
+        sorted_board=sorted(self.flatten(), reverse=True)
+        for x in range(4):
+            flag=False
+            for y in range(4):
+                if self[x][y]==sorted_board[0]:
+                    flag=True
+                    break
+            if flag:
+                break
+        for block,i in zip(sorted_board,range(16)):
+            if i>0:
+                if block==0:
+                    break
+                for j in range(-1,2,2):
+                    if x+j>=0 and x+j<=3:
+                        if self[x+j][y]==block:
+                            reward+=1
+                            x+=j
+                            break
+                    if y+j>=0 and y+j<=3:
+                        if self[x][y+j]==block:
+                            reward+=1
+                            y+=j
+                            break
+        return reward
+    
+    def reward(self):
+        return 0 if not self.max_in_corner() else 0 if self.snake()==1 else (self.snake()-1)/(self.num_blocks()-1)
 
 class game:
     def __init__(self):
@@ -66,6 +196,7 @@ class game:
         self.movements=-2
         self.blocks=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         self.history=[[0,0]]
+        self.reward=0
 
     def __repr__(self):
         output=""
@@ -172,11 +303,14 @@ class game:
         while True:
             print("score:\t"+str(self.score))
             print("movements:\t"+str(self.movements))
+            print("snake:\t"+str(self.board.snake()))
             print(self.board)
             if self.move2(input('w:up a:left s:down d:right ')):
                 self.new_bolck()
             else:
                 print("invalid move\a")
+            self.reward += self.board.reward()
+            print("reward:\t"+str(self.reward))
             if self.end():
                 print(self)
                 break
@@ -188,6 +322,7 @@ class game:
         self.movements=-2
         self.blocks=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         self.history=[[0,0]]
+        self.reward=0
 
 class action:
     def __init__(self):
@@ -211,20 +346,22 @@ class gym_env(game):
         self.action_space = action()
     
     def step(self,action):
+        #reward = self.board.move_score(action)
         if isinstance(action, int):
             action=self.action_space.actions[action]
         while not self.move2(action):
             action=self.action_space.item()
         self.new_bolck()
+        reward = self.board.reward()
         if self.end():
-            return self.board.flatten(), self.score, True
-        return self.board.flatten(), self.score, False
+            return self.board.normalize_2d(), 0, True
+        return self.board.normalize_2d(), reward, False
     
     def reset(self):
         super().reset()
         self.new_bolck()
         self.new_bolck()
-        return self.board.flatten()     
+        return self.board.normalize_2d()
 
     def render_in_terminal(self):
         done=False
@@ -241,5 +378,5 @@ class gym_env(game):
                 done=True
 
 if __name__=="__main__":
-    #game().play_in_terminal()
-    gym_env().render_in_terminal()
+    game().play_in_terminal()
+    #gym_env().render_in_terminal()

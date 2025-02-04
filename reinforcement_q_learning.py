@@ -131,7 +131,7 @@ class ReplayMemory(object):
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
-        # 计算10%的数据量
+        """# 计算10%的数据量
         recent_size = max(1, int(batch_size * 0.1))
         
         # 从最近10%的数据中取recent_size的数据
@@ -143,7 +143,8 @@ class ReplayMemory(object):
         samples = recent_samples + remaining_samples
         random.shuffle(samples)
         
-        return samples
+        return samples"""
+        return random.sample(self.memory, batch_size)
 
     def __len__(self):
         return len(self.memory)
@@ -225,6 +226,32 @@ class ReplayMemory(object):
 #
 
 class DQN(nn.Module):
+    def __init__(self):
+        super(DQN, self).__init__()
+        # 卷积层
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=2, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=2, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=2, stride=1, padding=1)
+        
+        # 全连接层
+        self.fc1 = nn.Linear(64*7*7, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 4)  # 输出4个动作的Q值
+
+    def forward(self, x):
+        # 输入x的形状为 [batch_size, 1, 4, 4]
+        x = F.relu(self.conv1(x))  # [batch_size, 16, 5, 5]
+        x = F.relu(self.conv2(x))  # [batch_size, 32, 6, 6]
+        x = F.relu(self.conv3(x))  # [batch_size, 64, 7, 7]
+        x = x.view(x.size(0), -1)  # [batch_size, 64 * 7 * 7]
+        
+        # 全连接层
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)  # 输出4个Q值
+        return x
+
+"""class DQN(nn.Module):
 
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
@@ -237,7 +264,7 @@ class DQN(nn.Module):
     def forward(self, x):
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
-        return self.layer3(x)
+        return self.layer3(x)"""
 
 
 ######################################################################
@@ -269,12 +296,12 @@ class DQN(nn.Module):
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 1024
+MAX_BATCH_SIZE = 2048
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.0
-EPS_DECAY = 1000
-TAU = 0.05
+EPS_DECAY = 100
+TAU = 0.005
 LR = 1e-4
 
 # Get number of actions from gym action space
@@ -283,8 +310,8 @@ n_actions = env.action_space.n
 state = env.reset()
 n_observations = len(state)
 
-policy_net = DQN(n_observations, n_actions).to(device)
-target_net = DQN(n_observations, n_actions).to(device)
+policy_net = DQN().to(device)
+target_net = DQN().to(device)
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
@@ -305,28 +332,39 @@ def select_action(state):
             # t.max(1) will return the largest column value of each row.
             # second column on max result is index of where max element was
             # found, so we pick action with the larger expected reward.
-            return policy_net(state).max(1).indices.view(1, 1)
+            # 确保 state 的形状是 [1, 1, 4, 4]
+            if len(state.shape) == 2:  # 如果 state 是 [4, 4]
+                state = state.unsqueeze(0).unsqueeze(0)  # 调整为 [1, 1, 4, 4]
+            elif len(state.shape) == 3:  # 如果 state 是 [1, 4, 4]
+                state = state.unsqueeze(0)  # 调整为 [1, 1, 4, 4]
+             # 获取 Q 值
+            q_values = policy_net(state)
+            
+            # 选择动作
+            action = q_values.max(1).indices
+            action = action.view(-1, 1)  # 动态调整形状
+            return action
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
 
-episode_durations = []
+episode_scores = []
 
 
-def plot_durations(show_result=False):
+def plot_scores(show_result=False):
     plt.figure(1)
-    durations_t = torch.tensor(episode_durations, dtype=torch.float)
+    scores_t = torch.tensor(episode_scores, dtype=torch.float)
     if show_result:
         plt.title('Result')
     else:
         plt.clf()
         plt.title('Training...')
     plt.xlabel('Episode')
-    plt.ylabel('Duration')
-    plt.plot(durations_t.numpy())
+    plt.ylabel('Score')
+    plt.plot(scores_t.numpy())
     # Take 100 episode averages and plot them too
-    if len(durations_t) >= 100:
-        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
+    if len(scores_t) >= 100:
+        means = scores_t.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
 
@@ -338,7 +376,7 @@ def plot_durations(show_result=False):
         else:
             display.display(plt.gcf())
     
-    if len(durations_t) >= 100:
+    if len(scores_t) >= 100:
         return means[-1]
     else:
         return 0
@@ -364,8 +402,9 @@ def plot_durations(show_result=False):
 #
 
 def optimize_model():
-    if len(memory) < BATCH_SIZE:
-        return
+    BATCH_SIZE = min(MAX_BATCH_SIZE, len(memory))
+    """if len(memory) < BATCH_SIZE:
+        return"""
     transitions = memory.sample(BATCH_SIZE)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
@@ -381,6 +420,13 @@ def optimize_model():
     state_batch = torch.cat(batch.state)
     action_batch = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)
+
+    # 确保 state_batch 的形状是 [batch_size, 1, 4, 4]
+    if len(state_batch.shape) == 3:  # 如果 state_batch 是 [batch_size, 4, 4]
+        state_batch = state_batch.unsqueeze(1)  # 调整为 [batch_size, 1, 4, 4]
+
+    if len(non_final_next_states.shape) == 3:  # 如果 non_final_next_states 是 [batch_size, 4, 4]
+        non_final_next_states = non_final_next_states.unsqueeze(1)  # 调整为 [batch_size, 1, 4, 4]
 
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
@@ -409,87 +455,90 @@ def optimize_model():
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
 
+if __name__=="__main__":
+    ######################################################################
+    #
+    # Below, you can find the main training loop. At the beginning we reset
+    # the environment and obtain the initial ``state`` Tensor. Then, we sample
+    # an action, execute it, observe the next state and the reward (always
+    # 1), and optimize our model once. When the episode ends (our model
+    # fails), we restart the loop.
+    #
+    # Below, `num_episodes` is set to 600 if a GPU is available, otherwise 50 
+    # episodes are scheduled so training does not take too long. However, 50 
+    # episodes is insufficient for to observe good performance on CartPole.
+    # You should see the model constantly achieve 500 steps within 600 training 
+    # episodes. Training RL agents can be a noisy process, so restarting training
+    # can produce better results if convergence is not observed.
+    #
 
-######################################################################
-#
-# Below, you can find the main training loop. At the beginning we reset
-# the environment and obtain the initial ``state`` Tensor. Then, we sample
-# an action, execute it, observe the next state and the reward (always
-# 1), and optimize our model once. When the episode ends (our model
-# fails), we restart the loop.
-#
-# Below, `num_episodes` is set to 600 if a GPU is available, otherwise 50 
-# episodes are scheduled so training does not take too long. However, 50 
-# episodes is insufficient for to observe good performance on CartPole.
-# You should see the model constantly achieve 500 steps within 600 training 
-# episodes. Training RL agents can be a noisy process, so restarting training
-# can produce better results if convergence is not observed.
-#
+    if torch.cuda.is_available() or torch.backends.mps.is_available():
+        num_episodes = 1000
+    else:
+        num_episodes = 50
 
-if torch.cuda.is_available() or torch.backends.mps.is_available():
-    num_episodes = 10000
-else:
-    num_episodes = 50
+    max_score=0
+    for i_episode in tqdm.tqdm(range(num_episodes)):
+        # Initialize the environment and get its state
+        state = env.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        for t in count():
+            action = select_action(state)
+            observation, reward, terminated = env.step(action.item())
+            reward = torch.tensor([reward], device=device)
+            done = terminated
 
-max_duration=0
-for i_episode in tqdm.tqdm(range(num_episodes)):
-    # Initialize the environment and get its state
-    state = env.reset()
-    state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-    for t in count():
-        action = select_action(state)
-        observation, reward, terminated = env.step(action.item())
-        reward = torch.tensor([reward], device=device)
-        done = terminated
+            if terminated:
+                next_state = None
+            else:
+                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
-        if terminated:
-            next_state = None
-        else:
-            next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+            # Store the transition in memory
+            memory.push(state, action, next_state, reward)
 
-        # Store the transition in memory
-        memory.push(state, action, next_state, reward)
+            # Move to the next state
+            state = next_state
 
-        # Move to the next state
-        state = next_state
+            # Perform one step of the optimization (on the policy network)
+            optimize_model()
 
-        # Perform one step of the optimization (on the policy network)
-        optimize_model()
+            # Soft update of the target network's weights
+            # θ′ ← τ θ + (1 −τ )θ′
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+            target_net.load_state_dict(target_net_state_dict)
 
-        # Soft update of the target network's weights
-        # θ′ ← τ θ + (1 −τ )θ′
-        target_net_state_dict = target_net.state_dict()
-        policy_net_state_dict = policy_net.state_dict()
-        for key in policy_net_state_dict:
-            target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
-        target_net.load_state_dict(target_net_state_dict)
+            if done:
+                episode_scores.append(env.score)
+                mean_score=plot_scores()
+                # 保存模型
+                if i_episode%20==0:
+                    torch.save(policy_net, 'last_policy_net.pth')
+                    torch.save(target_net, 'last_target_net.pth')
+                if mean_score>max_score:
+                    torch.save(policy_net, 'best_policy_net.pth')
+                    torch.save(target_net, 'best_target_net.pth')
+                    torch.save(policy_net, 'last_policy_net.pth')
+                    torch.save(target_net, 'last_target_net.pth')
+                    max_score=mean_score
+                break
 
-        if done:
-            episode_durations.append(t + 1)
-            mean_duration=plot_durations()
-            # 保存模型
-            torch.save(policy_net.state_dict(), 'last_policy_net.pth')
-            torch.save(target_net.state_dict(), 'last_target_net.pth')
-            if mean_duration>max_duration:
-                torch.save(policy_net.state_dict(), 'best_policy_net.pth')
-                torch.save(target_net.state_dict(), 'best_target_net.pth')
-                max_duration=mean_duration
-            break
+    print('Complete')
+    plot_scores(show_result=True)
+    plt.ioff()
+    plt.show()
 
-print('Complete')
-plot_durations(show_result=True)
-plt.ioff()
-plt.show()
-
-######################################################################
-# Here is the diagram that illustrates the overall resulting data flow.
-#
-# .. figure:: /_static/img/reinforcement_learning_diagram.jpg
-#
-# Actions are chosen either randomly or based on a policy, getting the next
-# step sample from the gym environment. We record the results in the
-# replay memory and also run optimization step on every iteration.
-# Optimization picks a random batch from the replay memory to do training of the
-# new policy. The "older" target_net is also used in optimization to compute the
-# expected Q values. A soft update of its weights are performed at every step.
-#
+    ######################################################################
+    # Here is the diagram that illustrates the overall resulting data flow.
+    #
+    # .. figure:: /_static/img/reinforcement_learning_diagram.jpg
+    #
+    # Actions are chosen either randomly or based on a policy, getting the next
+    # step sample from the gym environment. We record the results in the
+    # replay memory and also run optimization step on every iteration.
+    # Optimization picks a random batch from the replay memory to do training of the
+    # new policy. The "older" target_net is also used in optimization to compute the
+    # expected Q values. A soft update of its weights are performed at every step.
+    #

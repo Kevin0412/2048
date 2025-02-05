@@ -2,6 +2,7 @@ import random
 import copy
 
 import math
+import statistics
 
 class board:
     def __init__(self):
@@ -224,13 +225,14 @@ class game:
 
     def __repr__(self):
         output=""
-        for a in range(2,len(self.history)):
-            output+="first "+str(2**(a+1))+":\n"
-            output+="  score:\t"+str(self.history[a][0])+"\n"
-            output+="  movements:\t"+str(self.history[a][1])+"\n"
-            for b in range(2,len(self.history[a])-1):
-                output+="  new "+str(2**b)+":\t"+str(self.history[a][b])+"\n"
-            output+=str(self.history[a][-1])+"\n"
+        for a in range(1,len(self.history)):
+            if len(self.history[a])!=0:
+                output+="first "+str(2**(a+1))+":\n"
+                output+="  score:\t"+str(self.history[a][0])+"\n"
+                output+="  movements:\t"+str(self.history[a][1])+"\n"
+                for b in range(2,len(self.history[a])-1):
+                    output+="  new "+str(2**b)+":\t"+str(self.history[a][b])+"\n"
+                output+=str(self.history[a][-1])+"\n"
         output+="end:\n"
         output+="  score:\t"+str(self.score)+"\n"
         output+="  movements:\t"+str(self.movements)+"\n"
@@ -394,22 +396,24 @@ class gym_env(game):
         self.new_bolck()
         return self.board.normalize_2d()
 
-    def render_in_terminal(self):
+    def render_in_terminal(self,show=True):
         done=False
         while not done:
-            print("score:\t"+str(self.score))
-            print("movements:\t"+str(self.movements))
-            print(self.board)
+            if show:
+                print("score:\t"+str(self.score))
+                print("movements:\t"+str(self.movements))
+                print(self.board)
             if self.move2(self.action_space.item()):
                 self.new_bolck()
             else:
-                print("invalid move\a")
+                if show:
+                    print("invalid move\a")
             if self.end():
                 print(self)
                 done=True
 
 if __name__=="__main__":
-    a=board()
+    """a=board()
     a.board=[
         [1,2,0,2],
         [6,5,3,1],
@@ -417,7 +421,14 @@ if __name__=="__main__":
         [1,2,3,1]
     ]
     print(a)
-    print(a.moveable("s"))
+    print(a.moveable("s"))"""
     
     #game().play_in_terminal()
-    #gym_env().render_in_terminal()
+    scores=[]
+    a=gym_env()
+    for i in range(2048):
+       a.render_in_terminal(show=False)
+       scores.append(math.log2(a.score))
+       a.reset()
+    print(statistics.mean(scores),"±",statistics.stdev(scores))
+        

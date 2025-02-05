@@ -1,6 +1,8 @@
 import random
 import copy
 
+import math
+
 class board:
     def __init__(self):
         self.board=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
@@ -65,22 +67,39 @@ class board:
         return [item for sublist in self.board for item in sublist]
     
     def move_score(self,direction):
+        if not isinstance(direction,str):
+            print(direction,"is invalid")
+            raise
         new_score=0
-        if direction=='w' or direction=='s':
+        if direction=='d':
+            self.rotate(2)
+        elif direction=='w':
             self.rotate(1)
+        elif direction=='s':
+            self.rotate(3)
         for b in self.board:
             d=0
             for c in b:
                 if c!=0:
-                    d=c
-                elif d==c:
-                    new_score+=2*2**c
-                    d=0
-        if direction=='w' or direction=='s':
+                    if d==c:
+                        new_score+=2*2**c
+                        d=0
+                    else:
+                        d=c
+
+        if direction=='d':
+            self.rotate(2)
+        elif direction=='w':
             self.rotate(3)
+        elif direction=='s':
+            self.rotate(1)
         return new_score
     
     def moveable(self,direction):
+        if not isinstance(direction,str):
+            print(direction,"is invalid")
+            raise
+        output=False
         if direction=='d':
             self.rotate(2)
         elif direction=='w':
@@ -88,22 +107,27 @@ class board:
         elif direction=='s':
             self.rotate(3)
         for b in self.board:
-            d=0
+            d=-1
             for c in b:
-                if c==0:
-                    return True
-                elif c==d:
-                    return True
+                if c!=0:
+                    if c==d or d==0:
+                        output=True
+                        break
                 d=c
+            if output:
+                break
         if direction=='d':
             self.rotate(2)
         elif direction=='w':
             self.rotate(3)
         elif direction=='s':
             self.rotate(1)
-        return False
+        return output
     
     def move(self,direction):
+        if not isinstance(direction,str):
+            print(direction,"is invalid")
+            raise
         new=board()
         if direction=='d':
             self.rotate(2)
@@ -200,7 +224,7 @@ class game:
 
     def __repr__(self):
         output=""
-        for a in range(1,len(self.history)):
+        for a in range(2,len(self.history)):
             output+="first "+str(2**(a+1))+":\n"
             output+="  score:\t"+str(self.history[a][0])+"\n"
             output+="  movements:\t"+str(self.history[a][1])+"\n"
@@ -305,11 +329,14 @@ class game:
             print("movements:\t"+str(self.movements))
             print("snake:\t"+str(self.board.snake()))
             print(self.board)
-            if self.move2(input('w:up a:left s:down d:right ')):
+            direction=input('w:up a:left s:down d:right ')
+            if self.board.moveable(direction):
+                self.reward+=(0 if self.board.move_score(direction)==0 else math.log2(self.board.move_score(direction)) if self.score==0 else math.log2(self.board.move_score(direction)/self.score+1))
+                self.move2(direction)
                 self.new_bolck()
             else:
                 print("invalid move\a")
-            self.reward += self.board.reward()
+            #self.reward += self.board.reward()
             print("reward:\t"+str(self.reward))
             if self.end():
                 print(self)
@@ -346,15 +373,19 @@ class gym_env(game):
         self.action_space = action()
     
     def step(self,action):
-        #reward = self.board.move_score(action)
         if isinstance(action, int):
             action=self.action_space.actions[action]
-        while not self.move2(action):
+        
+        while not self.board.moveable(action):
             action=self.action_space.item()
+
+        reward=0 if self.board.move_score(action)==0 else math.log2(self.board.move_score(action)) if self.score==0 else math.log2(self.board.move_score(action)/self.score+1)
+        #reward = self.board.move_score(action)
+        self.move2(action)
         self.new_bolck()
-        reward = self.board.reward()
+        #reward = self.board.reward()
         if self.end():
-            return self.board.normalize_2d(), 0, True
+            return self.board.normalize_2d(), reward, True
         return self.board.normalize_2d(), reward, False
     
     def reset(self):
@@ -378,5 +409,15 @@ class gym_env(game):
                 done=True
 
 if __name__=="__main__":
-    game().play_in_terminal()
+    a=board()
+    a.board=[
+        [1,2,0,2],
+        [6,5,3,1],
+        [3,6,1,4],
+        [1,2,3,1]
+    ]
+    print(a)
+    print(a.moveable("s"))
+    
+    #game().play_in_terminal()
     #gym_env().render_in_terminal()

@@ -77,6 +77,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 import tqdm
+import numpy as np
 
 #env = gym.make("CartPole-v1", render_mode="human")
 env=game2048.gym_env()
@@ -131,7 +132,7 @@ class ReplayMemory(object):
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
-        """# 计算10%的数据量
+        # 计算10%的数据量
         recent_size = max(1, int(batch_size * 0.1))
         
         # 从最近10%的数据中取recent_size的数据
@@ -143,8 +144,8 @@ class ReplayMemory(object):
         samples = recent_samples + remaining_samples
         random.shuffle(samples)
         
-        return samples"""
-        return random.sample(self.memory, batch_size)
+        return samples
+        #return random.sample(self.memory, batch_size)
 
     def __len__(self):
         return len(self.memory)
@@ -299,7 +300,7 @@ class DQN(nn.Module):
 MAX_BATCH_SIZE = 2048
 GAMMA = 0.99
 EPS_START = 0.9
-EPS_END = 0.0
+EPS_END = 0.002
 EPS_DECAY = 100
 TAU = 0.005
 LR = 1e-4
@@ -360,12 +361,12 @@ def plot_scores(show_result=False):
         plt.clf()
         plt.title('Training...')
     plt.xlabel('Episode')
-    plt.ylabel('Score')
+    plt.ylabel('Score(2^k)')
     plt.plot(scores_t.numpy())
     # Take 100 episode averages and plot them too
     if len(scores_t) >= 100:
         means = scores_t.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
+        means = torch.cat((torch.zeros(99)+means[0], means))
         plt.plot(means.numpy())
 
     plt.pause(0.001)  # pause a bit so that plots are updated
@@ -473,7 +474,7 @@ if __name__=="__main__":
     #
 
     if torch.cuda.is_available() or torch.backends.mps.is_available():
-        num_episodes = 1000
+        num_episodes = 10000
     else:
         num_episodes = 50
 
@@ -499,24 +500,25 @@ if __name__=="__main__":
             # Move to the next state
             state = next_state
 
-            # Perform one step of the optimization (on the policy network)
-            optimize_model()
+            if len(memory)%1==0:
+                # Perform one step of the optimization (on the policy network)
+                optimize_model()
 
-            # Soft update of the target network's weights
-            # θ′ ← τ θ + (1 −τ )θ′
-            target_net_state_dict = target_net.state_dict()
-            policy_net_state_dict = policy_net.state_dict()
-            for key in policy_net_state_dict:
-                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
-            target_net.load_state_dict(target_net_state_dict)
+                # Soft update of the target network's weights
+                # θ′ ← τ θ + (1 −τ )θ′
+                target_net_state_dict = target_net.state_dict()
+                policy_net_state_dict = policy_net.state_dict()
+                for key in policy_net_state_dict:
+                    target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+                target_net.load_state_dict(target_net_state_dict)
+            if len(memory)%10000==0:
+                torch.save(policy_net, 'last_policy_net.pth')
+                torch.save(target_net, 'last_target_net.pth')
 
             if done:
-                episode_scores.append(env.score)
+                episode_scores.append(np.log2(env.score))
                 mean_score=plot_scores()
                 # 保存模型
-                if i_episode%20==0:
-                    torch.save(policy_net, 'last_policy_net.pth')
-                    torch.save(target_net, 'last_target_net.pth')
                 if mean_score>max_score:
                     torch.save(policy_net, 'best_policy_net.pth')
                     torch.save(target_net, 'best_target_net.pth')

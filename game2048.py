@@ -409,7 +409,8 @@ class gym_env(game):
                 if show:
                     print("invalid move\a")
             if self.end():
-                print(self)
+                if show:
+                    print(self)
                 done=True
 
 if __name__=="__main__":
@@ -424,11 +425,35 @@ if __name__=="__main__":
     print(a.moveable("s"))"""
     
     #game().play_in_terminal()
+    import tqdm
     scores=[]
     a=gym_env()
-    for i in range(2048):
-       a.render_in_terminal(show=False)
-       scores.append(math.log2(a.score))
-       a.reset()
-    print(statistics.mean(scores),"±",statistics.stdev(scores))
+    for i in tqdm.tqdm(range(2048)):
+        a.render_in_terminal(show=False)
+        scores.append(copy.deepcopy(a))
+        a.reset()
+    scores.sort(key=lambda x: x.score, reverse=True)
+    log_scores = [math.log2(score.score) for score in scores]
+    print(scores[0])
+    mean_log_score = statistics.mean(log_scores)
+    stdev_log_score = statistics.stdev(log_scores)
+    print(mean_log_score, "±", stdev_log_score)
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # 统计2**max(score.board.flatten())的分布
+    max_tile_distribution = [2**max(score.board.flatten()) for score in scores]
+    max_tile_counts = {2**i: max_tile_distribution.count(2**i) for i in range(1, 18)}
+
+    print("Max Tile Distribution:")
+    for tile, count in max_tile_counts.items():
+        print(f"{tile}: {count}")
+
+    # 统计得分log2(score.score)的分布
+    plt.hist(log_scores, bins=np.arange(min(log_scores), max(log_scores) + 0.1, 0.1), edgecolor='black')
+    plt.xlabel('log2(score)')
+    plt.ylabel('Frequency')
+    plt.title('Distribution of log2(score)')
+    plt.show()
+
         

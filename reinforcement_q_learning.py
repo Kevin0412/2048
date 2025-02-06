@@ -86,6 +86,7 @@ env=game2048.gym_env()
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
+import pickle
 
 plt.ion()
 
@@ -290,36 +291,44 @@ class DQN(nn.Module):
 #    episode.
 #
 
-# BATCH_SIZE is the number of transitions sampled from the replay buffer
-# GAMMA is the discount factor as mentioned in the previous section
-# EPS_START is the starting value of epsilon
-# EPS_END is the final value of epsilon
-# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
-# TAU is the update rate of the target network
-# LR is the learning rate of the ``AdamW`` optimizer
-MAX_BATCH_SIZE = 2048
-GAMMA = 0.99
-EPS_START = 0.9
-EPS_END = 0.002
-EPS_DECAY = 100
-TAU = 0.005
-LR = 1e-4
+if __name__=="__main__":
+    # BATCH_SIZE is the number of transitions sampled from the replay buffer
+    # GAMMA is the discount factor as mentioned in the previous section
+    # EPS_START is the starting value of epsilon
+    # EPS_END is the final value of epsilon
+    # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
+    # TAU is the update rate of the target network
+    # LR is the learning rate of the ``AdamW`` optimizer
+    MAX_BATCH_SIZE = 2048
+    GAMMA = 0.99
+    EPS_START = 0.9
+    EPS_END = 0.002
+    EPS_DECAY = 1000
+    TAU = 0.005
+    LR = 1e-4
+    RESUME=True
 
-# Get number of actions from gym action space
-n_actions = env.action_space.n
-# Get the number of state observations
-state = env.reset()
-n_observations = len(state)
+    # Get number of actions from gym action space
+    n_actions = env.action_space.n
+    # Get the number of state observations
+    state = env.reset()
+    n_observations = len(state)
 
-policy_net = DQN().to(device)
-target_net = DQN().to(device)
-target_net.load_state_dict(policy_net.state_dict())
+    memory = ReplayMemory(100000)
+    policy_net = DQN().to(device)
+    target_net = DQN().to(device)
+    if RESUME:
+        policy_net = torch.load("last_policy_net.pth", weights_only=False)
+        target_net = torch.load('last_target_net.pth',weights_only=False)
+        """with open('replay_memory.pkl', 'rb') as f:
+            memory = pickle.load(f)
+        with open('steps_done.pkl', 'rb') as f:
+            steps_done = pickle.load(f)"""
+    else:
+        target_net.load_state_dict(policy_net.state_dict())
+    steps_done = 0
 
-optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-memory = ReplayMemory(1000000)
-
-
-steps_done = 0
+    optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
 
 def select_action(state):
@@ -403,6 +412,8 @@ def plot_scores(show_result=False):
 #
 
 def optimize_model():
+    if RESUME and len(memory)<10000:
+        return
     BATCH_SIZE = min(MAX_BATCH_SIZE, len(memory))
     """if len(memory) < BATCH_SIZE:
         return"""
@@ -500,18 +511,21 @@ if __name__=="__main__":
             # Move to the next state
             state = next_state
 
-            if len(memory)%1==0:
-                # Perform one step of the optimization (on the policy network)
-                optimize_model()
+            # Perform one step of the optimization (on the policy network)
+            optimize_model()
 
-                # Soft update of the target network's weights
-                # θ′ ← τ θ + (1 −τ )θ′
-                target_net_state_dict = target_net.state_dict()
-                policy_net_state_dict = policy_net.state_dict()
-                for key in policy_net_state_dict:
-                    target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
-                target_net.load_state_dict(target_net_state_dict)
-            if len(memory)%10000==0:
+            # Soft update of the target network's weights
+            # θ′ ← τ θ + (1 −τ )θ′
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+            target_net.load_state_dict(target_net_state_dict)
+            if i_episode%100==0:
+                """with open('replay_memory.pkl', 'wb') as f:
+                    pickle.dump(memory, f)
+                with open('steps_done.pkl', 'wb') as f:
+                    pickle.dump(steps_done, f)"""
                 torch.save(policy_net, 'last_policy_net.pth')
                 torch.save(target_net, 'last_target_net.pth')
 
@@ -522,8 +536,6 @@ if __name__=="__main__":
                 if mean_score>max_score:
                     torch.save(policy_net, 'best_policy_net.pth')
                     torch.save(target_net, 'best_target_net.pth')
-                    torch.save(policy_net, 'last_policy_net.pth')
-                    torch.save(target_net, 'last_target_net.pth')
                     max_score=mean_score
                 break
 

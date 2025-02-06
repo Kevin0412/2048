@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from game2048 import gym_env,board
 from reinforcement_q_learning import DQN
+import math
+import statistics
 
 class Airun:
     def __init__(self, model_path='best_policy_net.pth'):
@@ -33,7 +35,7 @@ class Airun:
         print(f"当前总奖励: {total_reward}")
         print("-----------------------------")
 
-    def run(self,step=False):
+    def run(self,step=False,show=True):
         state = self.env.reset()
         done = False
         total_reward = 0
@@ -44,13 +46,18 @@ class Airun:
             total_reward += reward
 
             # 打印当前游戏状态
-            self.print_game_state(state, action, total_reward)
-            if step:
-                input()
+            if show:
+                self.print_game_state(state, action, total_reward)
+                if step:
+                    input()
 
             state = next_state
         print(self.env)
+        return self.env.score
 
 if __name__ == "__main__":
     airun = Airun()
-    airun.run()
+    scores=[]
+    for i in range(2048):
+       scores.append(math.log2(airun.run(show=False)))
+    print(statistics.mean(scores),"±",statistics.stdev(scores))

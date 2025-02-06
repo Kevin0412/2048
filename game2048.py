@@ -333,12 +333,12 @@ class game:
             print(self.board)
             direction=input('w:up a:left s:down d:right ')
             if self.board.moveable(direction):
-                self.reward+=(0 if self.board.move_score(direction)==0 else math.log2(self.board.move_score(direction)) if self.score==0 else math.log2(self.board.move_score(direction)/self.score+1))
+                #self.reward+=(0 if self.board.move_score(direction)==0 else math.log2(self.board.move_score(direction)) if self.score==0 else math.log2(self.board.move_score(direction)/self.score+1))
                 self.move2(direction)
                 self.new_bolck()
             else:
                 print("invalid move\a")
-            #self.reward += self.board.reward()
+            self.reward += self.board.reward()
             print("reward:\t"+str(self.reward))
             if self.end():
                 print(self)
@@ -381,11 +381,11 @@ class gym_env(game):
         while not self.board.moveable(action):
             action=self.action_space.item()
 
-        reward=0 if self.board.move_score(action)==0 else math.log2(self.board.move_score(action)) if self.score==0 else math.log2(self.board.move_score(action)/self.score+1)
+        #reward=0 if self.board.move_score(action)==0 else math.log2(self.board.move_score(action)) if self.score==0 else math.log2(self.board.move_score(action)/self.score+1)
         #reward = self.board.move_score(action)
         self.move2(action)
         self.new_bolck()
-        #reward = self.board.reward()
+        reward = self.board.reward()
         if self.end():
             return self.board.normalize_2d(), reward, True
         return self.board.normalize_2d(), reward, False

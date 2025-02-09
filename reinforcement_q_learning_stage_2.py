@@ -122,31 +122,43 @@ device = torch.device(
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
-
 class ReplayMemory(object):
 
-    def __init__(self, capacity):
+    def __init__(self, capacity, min_score=256):
         self.memory = deque([], maxlen=capacity)
+        self.buffer_pool = deque([], maxlen=10000)
+        self.min_score = min_score
 
     def push(self, *args):
-        """Save a transition"""
-        self.memory.append(Transition(*args))
+        """Save a transition to buffer pool"""
+        self.buffer_pool.append(Transition(*args))
+
+    def save_to_memory(self,env:game2048.gym_env):
+        """Save buffer pool to memory if score is high enough"""
+        #if env.score >= self.min_score:
+        if env.board.max_tile()>=self.min_score:
+            self.memory.extend(self.buffer_pool)
+        self.buffer_pool.clear()
 
     def sample(self, batch_size):
-        # 计算10%的数据量
-        recent_size = max(1, int(batch_size * 0.1))
-        
-        # 从最近10%的数据中取recent_size的数据
-        recent_samples = list(self.memory)[-recent_size:]
-        
-        # 从剩余的数据中取 batch_size - recent_size 的数据
-        remaining_samples = random.sample(list(self.memory)[:-recent_size], batch_size - recent_size)
-        
-        samples = recent_samples + remaining_samples
-        random.shuffle(samples)
-        
-        return samples
-        #return random.sample(self.memory, batch_size)
+        memory_size = len(self.memory)
+        buffer_pool_size = len(self.buffer_pool)
+        total_size = memory_size + buffer_pool_size
+
+        if total_size == 0:
+            return []
+
+        memory_ratio = memory_size / total_size
+
+        memory_sample_size = int(batch_size * memory_ratio)
+        if random.random() < (batch_size * memory_ratio) % 1:
+            memory_sample_size += 1
+        buffer_pool_sample_size = batch_size - memory_sample_size
+
+        memory_sample = random.sample(self.memory, memory_sample_size) if memory_sample_size > 0 else []
+        buffer_pool_sample = random.sample(self.buffer_pool, buffer_pool_sample_size) if buffer_pool_sample_size > 0 else []
+
+        return memory_sample + buffer_pool_sample
 
     def __len__(self):
         return len(self.memory)
@@ -507,6 +519,8 @@ if __name__=="__main__":
 
             # Store the transition in memory
             memory.push(state, action, next_state, reward)
+            if terminated:
+                memory.save_to_memory(env)
 
             # Move to the next state
             state = next_state

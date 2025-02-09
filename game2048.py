@@ -174,6 +174,9 @@ class board:
         sorted_board=sorted(self.flatten(), reverse=True)
         return sorted_board[0]==self.board[0][0] or sorted_board[0]==self.board[0][3] or sorted_board[0]==self.board[3][0] or sorted_board[0]==self.board[3][3]
     
+    def max_tile(self):
+        return 2**max(self.flatten())
+    
     def num_blocks(self):
         return sum([1 for a in self.flatten() if a!=0])
     
@@ -442,7 +445,7 @@ if __name__=="__main__":
     import numpy as np
 
     # 统计2**max(score.board.flatten())的分布
-    max_tile_distribution = [2**max(score.board.flatten()) for score in scores]
+    max_tile_distribution = [score.board.max_tile() for score in scores]
     max_tile_counts = {2**i: max_tile_distribution.count(2**i) for i in range(1, 18)}
 
     print("Max Tile Distribution:")

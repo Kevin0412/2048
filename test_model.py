@@ -72,7 +72,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # 统计2**max(score.board.flatten())的分布
-    max_tile_distribution = [2**max(score.board.flatten()) for score in scores]
+    max_tile_distribution = [score.board.max_tile() for score in scores]
     max_tile_counts = {2**i: max_tile_distribution.count(2**i) for i in range(1, 18)}
 
     print("Max Tile Distribution:")

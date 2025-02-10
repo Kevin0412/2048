@@ -124,7 +124,7 @@ Transition = namedtuple('Transition',
 
 class ReplayMemory(object):
 
-    def __init__(self, capacity, min_score=256):
+    def __init__(self, capacity, min_score=512):
         self.memory = deque([], maxlen=capacity)
         self.buffer_pool = deque([], maxlen=10000)
         self.min_score = min_score
@@ -136,7 +136,7 @@ class ReplayMemory(object):
     def save_to_memory(self,env:game2048.gym_env):
         """Save buffer pool to memory if score is high enough"""
         #if env.score >= self.min_score:
-        if env.board.max_tile()>=self.min_score:
+        if env.board.max_tile()>=self.min_score or random.random()<0.3:
             self.memory.extend(self.buffer_pool)
         self.buffer_pool.clear()
 
@@ -312,12 +312,12 @@ if __name__=="__main__":
     # TAU is the update rate of the target network
     # LR is the learning rate of the ``AdamW`` optimizer
     MAX_BATCH_SIZE = 2048
-    GAMMA = 0.99
+    GAMMA = 0.999
     EPS_START = 1.0
     EPS_END = 0.002
     EPS_DECAY = 1000
     TAU = 0.005
-    LR = 1e-4
+    LR = 3e-5
     RESUME=True
 
     # Get number of actions from gym action space
@@ -326,7 +326,7 @@ if __name__=="__main__":
     state = env.reset()
     n_observations = len(state)
 
-    memory = ReplayMemory(100000)
+    memory = ReplayMemory(131072)
     policy_net = DQN().to(device)
     target_net = DQN().to(device)
     if RESUME:
@@ -497,7 +497,7 @@ if __name__=="__main__":
     #
 
     if torch.cuda.is_available() or torch.backends.mps.is_available():
-        num_episodes = 16384
+        num_episodes = 32768
     else:
         num_episodes = 50
 

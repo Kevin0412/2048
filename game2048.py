@@ -214,8 +214,13 @@ class board:
                             break
         return reward
     
+    def empty_blocks(self):
+        return sum([1 for a in self.flatten() if a==0])
+    
     def reward(self):
-        return 0 if not self.max_in_corner() else 0 if self.snake()==1 else (self.snake()-1)/(self.num_blocks()-1)
+        reword1=0 if not self.max_in_corner() else 0 if self.snake()==1 else (self.snake()-1)/(self.num_blocks()-1)
+        reword2=1-((14-self.empty_blocks())/14)**2
+        return reword1*reword2
 
 class game:
     def __init__(self):

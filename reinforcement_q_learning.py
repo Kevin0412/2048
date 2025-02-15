@@ -125,8 +125,8 @@ Transition = namedtuple('Transition',
 
 class ReplayMemory(object):
 
-    def __init__(self, capacity):
-        self.memory = deque([], maxlen=capacity)
+    def __init__(self):
+        self.memory = []
 
     def push(self, *args):
         """Save a transition"""
@@ -314,7 +314,7 @@ if __name__=="__main__":
     state = env.reset()
     n_observations = len(state)
 
-    memory = ReplayMemory(100000)
+    memory = ReplayMemory()
     policy_net = DQN().to(device)
     target_net = DQN().to(device)
     if RESUME:

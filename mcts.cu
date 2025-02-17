@@ -11,15 +11,9 @@ constexpr int BOARD_SIZE = 4;
 constexpr float c = 1.5;
 constexpr int ROLLOUT_DEPTH = 8;
 
-// 游戏状态结构体（CPU/GPU共用）
-struct GameState {
-    int board[BOARD_SIZE][BOARD_SIZE];
-    int score;
-};
-
 // MCTS节点（CPU端）
 struct MCTSNode {
-    GameState state;
+    Board state;
     MCTSNode* parent;
     std::unordered_map<int, std::vector<std::pair<float, MCTSNode*>>> children; // action -> [(prob, node)]
     int visit_count = 0;
@@ -28,13 +22,13 @@ struct MCTSNode {
 };
 
 // CUDA核函数：并行模拟
-__global__ void rollout_kernel(GameState* states, float* rewards, int num_simulations,
+__global__ void rollout_kernel(Board* states, float* rewards, int num_simulations,
                                torch::jit::script::Module* dqn_module, curandState* rand_states) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_simulations) return;
 
     curandState local_state = rand_states[idx];
-    GameState state = states[idx];
+    Board state = states[idx];
     float reward = 0.0f;
 
     for (int step = 0; step < ROLLOUT_DEPTH; ++step) {
@@ -90,11 +84,11 @@ public:
         // 释放树内存（需实现）
     }
 
-    __host__ __device__ void preprocess_state(const GameState& state, float* output) {
+    __host__ __device__ void preprocess_state(const Board& state, float* output) {
         // 实现与Python相同的状态预处理逻辑
     }
 
-    int search(const GameState& initial_state, int iterations=1000) {
+    int search(const Board& initial_state, int iterations=1000) {
         root = new MCTSNode{initial_state, nullptr, {}, 0, 0.0, torch::Tensor()};
         
         // 预计算DQN Q值
@@ -118,14 +112,14 @@ public:
             
             // 准备CUDA模拟
             const int num_simulations = 1024;
-            GameState* d_states;
+            Board* d_states;
             float* d_rewards;
             
-            cudaMalloc(&d_states, num_simulations*sizeof(GameState));
+            cudaMalloc(&d_states, num_simulations*sizeof(Board));
             cudaMalloc(&d_rewards, num_simulations*sizeof(float));
             
             // 复制状态到设备
-            cudaMemcpy(d_states, &node->state, sizeof(GameState), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_states, &node->state, sizeof(Board), cudaMemcpyHostToDevice);
             
             // 启动CUDA核函数
             rollout_kernel<<<32, 32>>>(d_states, d_rewards, num_simulations, 
@@ -154,7 +148,7 @@ public:
     }
 
 private:
-    torch::Tensor preprocess_state_cpu(const GameState& state) {
+    torch::Tensor preprocess_state_cpu(const Board& state) {
         // 实现CPU端的状态预处理
     }
 
@@ -170,8 +164,9 @@ __global__ void setup_kernel(curandState* state, unsigned long seed) {
 }
 
 int main() {
-    AcceleratedMCTS mcts("best_policy_net.pt");
-    GameState initial_state{/* 初始化棋盘 */};
+    setRandomSeed();
+    AcceleratedMCTS mcts("../best_policy_net.pt");
+    Board initial_state{/* 初始化棋盘 */};
     int best_action = mcts.search(initial_state);
     std::cout << "Best action: " << best_action << std::endl;
     return 0;

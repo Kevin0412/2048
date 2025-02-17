@@ -217,11 +217,19 @@ class board:
     def empty_blocks(self):
         return sum([1 for a in self.flatten() if a==0])
     
+    def count_unique_tiles(self):
+        unique_tile = set()
+        for row in self.board:
+            unique_tile.update(row)
+        return len(unique_tile)-1
+    
     def reward(self):
-        reword1=0 if not self.max_in_corner() else 0 if self.snake()==1 else (self.snake()-1)/(self.num_blocks()-1)
-        reword2=1-((14-self.empty_blocks())/14)**2
-        return reword1*reword2
-
+        reword1=(self.snake()-1)/(self.num_blocks()-1)
+        reword2_part1=16-self.count_unique_tiles()
+        reword2=1-((reword2_part1-self.empty_blocks())/reword2_part1)**2 if reword2_part1 else 1
+        reword3=0.5 if not self.max_in_corner() else 1
+        return reword1*reword2*reword3
+    
 class game:
     def __init__(self):
         self.board=board()

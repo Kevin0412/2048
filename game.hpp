@@ -8,8 +8,8 @@
 #include <sstream>
 #include <cstdlib>
 
-void setRandomSeed() {
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+void setRandomSeed(unsigned int seed=std::time(nullptr)) {
+    std::srand(static_cast<unsigned int>(seed));
 }
 class Board {
 public:

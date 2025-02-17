@@ -352,9 +352,10 @@ class game:
                 #self.reward+=(0 if self.board.move_score(direction)==0 else math.log2(self.board.move_score(direction)) if self.score==0 else math.log2(self.board.move_score(direction)/self.score+1))
                 self.move2(direction)
                 self.new_bolck()
+                self.reward += self.board.reward()
             else:
                 print("invalid move\a")
-            self.reward += self.board.reward()
+                self.reward -= 1
             print("reward:\t"+str(self.reward))
             if self.end():
                 print(self)
@@ -393,15 +394,17 @@ class gym_env(game):
     def step(self,action):
         if isinstance(action, int):
             action=self.action_space.actions[action]
-        
+        reward=0
         while not self.board.moveable(action):
             action=self.action_space.item()
+            reward=-1
 
         #reward=0 if self.board.move_score(action)==0 else math.log2(self.board.move_score(action)) if self.score==0 else math.log2(self.board.move_score(action)/self.score+1)
         #reward = self.board.move_score(action)
         self.move2(action)
         self.new_bolck()
-        reward = self.board.reward()
+        if reward!=-1:
+            reward = self.board.reward()
         if self.end():
             return self.board.normalize_2d(), reward, True
         return self.board.normalize_2d(), reward, False

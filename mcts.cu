@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <torch/script.h>
 #include <cuda_runtime.h>
+#include "game.hpp"
 
 constexpr int BOARD_SIZE = 4;
 constexpr float c = 1.5;
@@ -169,7 +170,7 @@ __global__ void setup_kernel(curandState* state, unsigned long seed) {
 }
 
 int main() {
-    AcceleratedMCTS mcts("2048_dqn.pt");
+    AcceleratedMCTS mcts("best_policy_net.pt");
     GameState initial_state{/* 初始化棋盘 */};
     int best_action = mcts.search(initial_state);
     std::cout << "Best action: " << best_action << std::endl;

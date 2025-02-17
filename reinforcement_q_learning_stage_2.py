@@ -125,28 +125,19 @@ Transition = namedtuple('Transition',
 
 class ReplayMemory(object):
 
-    def __init__(self):
+    def __init__(self,compacity=400000):
         self.memory = []
+        self.compacity=compacity
 
     def push(self, *args):
         """Save a transition"""
-        self.memory.append(Transition(*args))
+        if len(self.memory)>self.compacity:
+            self.memory[random.randint(0,self.compacity-1)]=Transition(*args)
+        else:
+            self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
-        # 计算10%的数据量
-        recent_size = max(1, int(batch_size * 0.1))
-        
-        # 从最近10%的数据中取recent_size的数据
-        recent_samples = list(self.memory)[-recent_size:]
-        
-        # 从剩余的数据中取 batch_size - recent_size 的数据
-        remaining_samples = random.sample(list(self.memory)[:-recent_size], batch_size - recent_size)
-        
-        samples = recent_samples + remaining_samples
-        random.shuffle(samples)
-        
-        return samples
-        #return random.sample(self.memory, batch_size)
+        return random.sample(self.memory, batch_size)
 
     def __len__(self):
         return len(self.memory)
@@ -372,10 +363,10 @@ def plot_scores(show_result=False):
     plt.xlabel('Episode')
     plt.ylabel('Score(2^k)')
     plt.plot(scores_t.numpy())
-    # Take 100 episode averages and plot them too
-    if len(scores_t) >= 100:
-        means = scores_t.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99)+means[0], means))
+    # Take 64 episode averages and plot them too
+    if len(scores_t) >= 64:
+        means = scores_t.unfold(0, 64, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(63)+means[0], means))
         plt.plot(means.numpy())
 
     plt.pause(0.001)  # pause a bit so that plots are updated
@@ -386,7 +377,7 @@ def plot_scores(show_result=False):
         else:
             display.display(plt.gcf())
     
-    if len(scores_t) >= 100:
+    if len(scores_t) >= 64:
         return means[-1]
     else:
         return 0

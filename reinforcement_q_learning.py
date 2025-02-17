@@ -133,20 +133,7 @@ class ReplayMemory(object):
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
-        # 计算10%的数据量
-        recent_size = max(1, int(batch_size * 0.1))
-        
-        # 从最近10%的数据中取recent_size的数据
-        recent_samples = list(self.memory)[-recent_size:]
-        
-        # 从剩余的数据中取 batch_size - recent_size 的数据
-        remaining_samples = random.sample(list(self.memory)[:-recent_size], batch_size - recent_size)
-        
-        samples = recent_samples + remaining_samples
-        random.shuffle(samples)
-        
-        return samples
-        #return random.sample(self.memory, batch_size)
+        return random.sample(self.memory, batch_size)
 
     def __len__(self):
         return len(self.memory)

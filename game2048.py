@@ -447,7 +447,7 @@ if __name__=="__main__":
     import tqdm
     scores=[]
     a=gym_env()
-    for i in tqdm.tqdm(range(2048)):
+    for i in tqdm.tqdm(range(1000)):
         a.render_in_terminal(show=False)
         scores.append(copy.deepcopy(a))
         a.reset()
@@ -475,4 +475,4 @@ if __name__=="__main__":
     plt.title('Distribution of log2(score)')
     plt.show()
 
-        
+

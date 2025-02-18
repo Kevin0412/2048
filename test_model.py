@@ -61,7 +61,7 @@ class Airun:
 if __name__ == "__main__":
     airun = Airun(model_path='best_policy_net.pth')
     scores=[]
-    for i in tqdm.tqdm(range(2048)):
+    for i in tqdm.tqdm(range(1000)):
         scores.append(copy.deepcopy(airun.run(show=False)))
     scores.sort(key=lambda x: x.score, reverse=True)
     log_scores = [math.log2(score.score) for score in scores]

@@ -391,7 +391,7 @@ class gym_env(game):
         self.new_bolck()
         self.action_space = action()
     
-    def step(self,action):
+    def step(self,action,with_wrong_move=False):
         if isinstance(action, int):
             action=self.action_space.actions[action]
         reward=0
@@ -403,8 +403,10 @@ class gym_env(game):
         #reward = self.board.move_score(action)
         self.move2(action)
         self.new_bolck()
-        if reward!=-1:
+        if reward!=-1 or with_wrong_move:
             reward = self.board.reward()
+        if with_wrong_move:
+            reward = (reward,['w','a','s','d'].index(action))
         if self.end():
             return self.board.normalize_2d(), reward, True
         return self.board.normalize_2d(), reward, False

@@ -123,7 +123,107 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 
-class ReplayMemory(object):
+class SumTree:
+    """SumTree数据结构实现优先级的树状存储"""
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.tree = np.zeros(2 * capacity - 1)  # 树节点数=2N-1
+        self.data = np.zeros(capacity, dtype=object)  # 存储经验数据
+        self.data_pointer = 0  # 数据指针
+    
+    def add(self, priority, data):
+        """添加数据和优先级到树中"""
+        tree_idx = self.data_pointer + self.capacity - 1  # 计算叶子节点位置
+        self.data[self.data_pointer] = data  # 存储数据
+        self.update(tree_idx, priority)  # 更新树中的优先级
+        self.data_pointer = (self.data_pointer + 1) % self.capacity  # 循环覆盖
+    
+    def update(self, tree_idx, priority):
+        """更新指定位置的优先级并传播变化"""
+        change = priority - self.tree[tree_idx]
+        self.tree[tree_idx] = priority
+        while tree_idx != 0:  # 向上传播到根节点
+            tree_idx = (tree_idx - 1) // 2
+            self.tree[tree_idx] += change
+    
+    def get_leaf(self, v):
+        """根据随机值v采样叶子节点"""
+        parent_idx = 0
+        while True:
+            left_child_idx = 2 * parent_idx + 1
+            right_child_idx = left_child_idx + 1
+            if left_child_idx >= len(self.tree):
+                leaf_idx = parent_idx
+                break
+            if v <= self.tree[left_child_idx]:
+                parent_idx = left_child_idx
+            else:
+                v -= self.tree[left_child_idx]
+                parent_idx = right_child_idx
+        data_idx = leaf_idx - self.capacity + 1
+        return leaf_idx, self.tree[leaf_idx], self.data[data_idx]
+    
+class PrioritizedReplayMemory(object):
+    """带优先级的经验回放池"""
+    def __init__(self, capacity=1000000, alpha=0.6, beta=0.4, beta_increment=0.001):
+        self.alpha = alpha  # 优先级系数（0=均匀采样，1=完全优先级）
+        self.beta = beta  # 重要性采样调整系数
+        self.beta_increment = beta_increment
+        self.abs_err_upper = 1.0  # 初始TD误差上限
+        
+        self.tree = SumTree(capacity)
+    
+    def push(self, *args, priority=None):
+        """存储经验并初始化优先级（若未提供）"""
+        max_priority = np.max(self.tree.tree[-self.tree.capacity:])  # 现有最大优先级
+        if max_priority == 0:  # 空树时初始化优先级
+            max_priority = self.abs_err_upper
+        if priority is None:  # 新经验的初始优先级设为当前最大
+            priority = max_priority
+        data = Transition(*args)
+        self.tree.add(priority**self.alpha, data)  # 用alpha平滑优先级
+    
+    def sample(self, batch_size):
+        """根据优先级采样并计算重要性采样权重"""
+        batch_idx = []
+        batch_weights = []
+        batch_data = []
+        
+        segment = self.tree.tree[0] / batch_size  # 将优先级总和分成batch_size段
+        
+        self.beta = np.min([1., self.beta + self.beta_increment])  # 逐步增加beta
+        
+        min_prob = np.min(self.tree.tree[-self.tree.capacity:]) / self.tree.tree[0]  # 最小概率
+        max_weight = (min_prob * self.tree.capacity) ** (-self.beta)  # 最大重要性采样权重
+        
+        for i in range(batch_size):
+            a = segment * i
+            b = segment * (i + 1)
+            v = np.random.uniform(a, b)
+            idx, priority, data = self.tree.get_leaf(v)
+            
+            prob = priority / self.tree.tree[0]  # 当前样本的概率
+            weight = (prob * self.tree.capacity) ** (-self.beta)  # 重要性采样权重
+            weight /= max_weight  # 归一化
+            
+            batch_idx.append(idx)
+            batch_weights.append(weight)
+            batch_data.append(data)
+        
+        return batch_data, batch_idx, batch_weights
+    
+    def update_priorities(self, indices, errors):
+        """用新的TD误差更新优先级"""
+        errors = np.clip(np.abs(errors), 1e-4, self.abs_err_upper)  # 限制误差范围
+        for idx, err in zip(indices, errors):
+            self.tree.update(idx, err**self.alpha)
+    
+    def __len__(self):
+        """当前存储的经验数量"""
+        return min(self.tree.data_pointer, self.tree.capacity)
+
+
+'''class ReplayMemory(object):
 
     def __init__(self,capacity=1000000):
         self.memory = []
@@ -140,7 +240,7 @@ class ReplayMemory(object):
         return random.sample(self.memory, batch_size)
 
     def __len__(self):
-        return len(self.memory)
+        return len(self.memory)'''
 
 
 ######################################################################
@@ -305,8 +405,7 @@ if __name__=="__main__":
     state = env.reset()
     n_observations = len(state)
 
-    memory = ReplayMemory()
-    punishment_memory = ReplayMemory(2048)
+    memory = PrioritizedReplayMemory()
     policy_net = DQN().to(device)
     target_net = DQN().to(device)
     if RESUME:
@@ -409,10 +508,7 @@ def optimize_model():
     BATCH_SIZE = min(MAX_BATCH_SIZE, len(memory))
     """if len(memory) < BATCH_SIZE:
         return"""
-    if len(punishment_memory)<BATCH_SIZE/16:
-        transitions = memory.sample(BATCH_SIZE-len(punishment_memory))+punishment_memory.sample(len(punishment_memory))
-    else:
-        transitions = memory.sample(BATCH_SIZE-int(BATCH_SIZE/16))+punishment_memory.sample(int(BATCH_SIZE/16))
+    transitions, indices, weights = memory.sample(BATCH_SIZE)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
     # to Transition of batch-arrays.
@@ -450,10 +546,15 @@ def optimize_model():
         next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
     # Compute the expected Q values
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+    weights = torch.tensor(weights, device=device, dtype=torch.float32)
 
     # Compute Huber loss
-    criterion = nn.SmoothL1Loss()
-    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+    loss = F.mse_loss(
+        state_action_values,
+        expected_state_action_values.unsqueeze(1),
+        reduction='none'  # 保持每个样本的损失
+    )
+    loss = (weights * loss).mean()  # 重要性采样加权
 
     # Optimize the model
     optimizer.zero_grad()
@@ -461,6 +562,9 @@ def optimize_model():
     # In-place gradient clipping
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
+
+    td_errors = (state_action_values - expected_state_action_values.unsqueeze(1)).detach().abs().cpu().numpy().flatten()
+    memory.update_priorities(indices, td_errors)  # 更新优先级
 
 if __name__=="__main__":
     ######################################################################
@@ -491,8 +595,9 @@ if __name__=="__main__":
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         for t in count():
             action = select_action(state)
-            observation, reward, terminated = env.step(action.item())
-            reward = torch.tensor([reward], device=device)
+            observation, reward, terminated = env.step(action.item(),with_wrong_move=True)
+            real_action = torch.tensor([[reward[1]]], device=device, dtype=torch.long)
+            reward = torch.tensor([reward[0]], device=device)
             done = terminated
 
             if terminated:
@@ -501,10 +606,9 @@ if __name__=="__main__":
                 next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
             # Store the transition in memory
-            if reward[0]<0:
-                punishment_memory.push(state, action, next_state, reward)
-            else:
-                memory.push(state, action, next_state, reward)
+            if action.item()!=real_action.item():
+                memory.push(state, action, next_state, torch.tensor([-1], device=device), priority=1)
+            memory.push(state, real_action, next_state, reward)
 
             # Move to the next state
             state = next_state

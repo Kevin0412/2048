@@ -6,6 +6,8 @@ from game2048 import board,gym_env  # 导入game2048中的board和game类
 import copy
 from reinforcement_q_learning import DQN
 import tqdm
+import pickle
+from datetime import datetime
 
 class MCTSNode:
     def __init__(self, game_state:board, parent=None, dqn_model=None):
@@ -110,7 +112,7 @@ class MCTSNode:
                 i, j = empty_cells[np.random.choice(len(empty_cells))]
                 new_state[i][j] = 1 if np.random.rand() < 0.9 else 2  # 90%生成2，10%生成4
             
-            reward = self._calculate_reward(current_state, new_state)
+            reward = self._calculate_reward(current_state, new_state, action)
             total_reward += reward
             current_state = new_state
             
@@ -133,11 +135,15 @@ class MCTSNode:
                         break
             node = node.parent
 
-    def _calculate_reward(self, old_state, new_state):
+    def _calculate_reward(self, old_state, new_state,action):
         """计算即时奖励"""
-        old_score = old_state.reward()
+        """old_score = old_state.reward()
         new_score = new_state.reward()
-        return new_score-old_score
+        return new_score-old_score"""
+        temp_env = gym_env()
+        temp_env.board = old_state
+        temp_env.step(action)
+        return temp_env.score
 
 class MCTS:
     def __init__(self, dqn_model, iterations=512):
@@ -212,7 +218,7 @@ if __name__ == "__main__":
     mcts = MCTS(dqn_model=dqn_model, iterations=512)  # 每次搜索迭代500次
 
     # 运行多次游戏以评估性能
-    num_games = 1  # 运行100次游戏
+    num_games = 32  # 运行100次游戏
     scores = []
     max_tiles = []
 
@@ -222,13 +228,25 @@ if __name__ == "__main__":
         env.reset()
         print(env.board)
 
+        game_data = []
+
         while not env.end():
             # 使用MCTS获取最佳动作
             best_action = mcts.search(root_state=env.board)
             print(f"Best Action: {['上', '左', '下', '右'][['w', 'a', 's', 'd'].index(best_action)]}")
+            
+            # 保存当前状态和动作
+            game_data.append({"state": copy.deepcopy(env.board), "action": best_action})
+            
             # 执行动作
             env.step(best_action)
             print(env.board)
+
+        # 保存游戏状态和动作到文件
+        now_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"mtcs_games/{env.score}_{now_time}.pkl"
+        with open(filename, "wb") as f:
+            pickle.dump(game_data, f)
 
         # 记录游戏结果
         scores.append(env.score)
@@ -253,3 +271,4 @@ if __name__ == "__main__":
     plt.xlabel("Score")
     plt.ylabel("Frequency")
     plt.show()
+    input()

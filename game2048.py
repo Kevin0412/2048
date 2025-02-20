@@ -43,6 +43,14 @@ class board:
         self.board = state
         return self
     
+    def __eq__(self, other):
+        if not isinstance(other, board):
+            return NotImplemented
+        return self.board == other.board
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+    
     def rotate(self,times):
         for t in range(times):
             new=board()

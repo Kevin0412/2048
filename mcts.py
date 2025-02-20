@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from collections import defaultdict
-from game2048 import board, game  # 导入game2048中的board和game类
+from game2048 import board,gym_env  # 导入game2048中的board和game类
 import copy
 from reinforcement_q_learning import DQN
 import tqdm
@@ -30,8 +30,8 @@ class MCTSNode:
         return processed
 
     def _get_legal_actions(self):
-        """返回可执行的动作列表（0:上, 1:下, 2:左, 3:右）"""
-        actions = ["w", "s", "a", "d"]
+        """返回可执行的动作列表（0:上, 1:左, 2:下, 3:右）"""
+        actions = ["w", "a", "s", "d"]
         legal_actions = []
         for action in actions:
             if self.game_state.moveable(action):
@@ -49,7 +49,7 @@ class MCTSNode:
             total_visits = sum(n.visit_count for n in outcome_nodes)
             
             # 计算混合UCT值
-            q_dqn = self.q_values[["w", "s", "a", "d"].index(action)]  # DQN的Q值
+            q_dqn = self.q_values[["w", "a", "s", "d"].index(action)]  # DQN的Q值
             exploitation = sum(n.total_value for n in outcome_nodes) / (total_visits + 1e-6)
             exploration = c * np.sqrt(np.log(self.visit_count + 1) / (total_visits + 1e-6))
             
@@ -91,11 +91,11 @@ class MCTSNode:
                 break
                 
             # 80%概率使用DQN策略，20%随机
-            if np.random.rand() < 0.8:  
+            if np.random.rand() < 0.0:  
                 with torch.no_grad():
                     state_tensor = torch.FloatTensor(current_state.normalize_2d()).unsqueeze(0).unsqueeze(0)
                     action_index = torch.argmax(self.dqn_model(state_tensor)).item()
-                    action = ["w", "s", "a", "d"][action_index]
+                    action = ["w", "a", "s", "d"][action_index]
             else:
                 action = np.random.choice(self.legal_actions)
                 
@@ -137,10 +137,10 @@ class MCTSNode:
         """计算即时奖励"""
         old_score = old_state.reward()
         new_score = new_state.reward()
-        return new_score - old_score
+        return new_score-old_score
 
 class MCTS:
-    def __init__(self, dqn_model, iterations=500):
+    def __init__(self, dqn_model, iterations=512):
         self.dqn_model = dqn_model
         self.iterations = iterations
         
@@ -195,7 +195,7 @@ class MCTS:
         best_score = -float('inf')
         for action, children in root.children.items():
             total_visits = sum(child.visit_count for child in children.values())
-            q_value = root.q_values[["w", "s", "a", "d"].index(action)]
+            q_value = root.q_values[["w", "a", "s", "d"].index(action)]
             score = 0.7 * q_value + 0.3 * total_visits
             if score > best_score:
                 best_score = score
@@ -205,30 +205,30 @@ class MCTS:
 
 if __name__ == "__main__":
     # 加载预训练的DQN模型
-    dqn_model = torch.load("best_policy_net.pth",weights_only=False, map_location=torch.device("cpu"))  # 确保模型路径正确
+    dqn_model = torch.load("models/7/best_policy_net.pth",weights_only=False, map_location=torch.device("cpu"))  # 确保模型路径正确
     dqn_model.eval()  # 设置为评估模式
 
     # 初始化MCTS
-    mcts = MCTS(dqn_model=dqn_model, iterations=500)  # 每次搜索迭代500次
+    mcts = MCTS(dqn_model=dqn_model, iterations=512)  # 每次搜索迭代500次
 
     # 运行多次游戏以评估性能
-    num_games = 10  # 运行100次游戏
+    num_games = 1  # 运行100次游戏
     scores = []
     max_tiles = []
 
     for i in tqdm.tqdm(range(num_games), desc="Playing games"):
         # 初始化游戏
-        env = game()
-        env.new_bolck()
-        env.new_bolck()
+        env = gym_env()
+        env.reset()
+        print(env.board)
 
         while not env.end():
             # 使用MCTS获取最佳动作
             best_action = mcts.search(root_state=env.board)
-
+            print(f"Best Action: {['上', '左', '下', '右'][['w', 'a', 's', 'd'].index(best_action)]}")
             # 执行动作
-            env.move2(best_action)
-            env.new_bolck()
+            env.step(best_action)
+            print(env.board)
 
         # 记录游戏结果
         scores.append(env.score)

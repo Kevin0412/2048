@@ -12,7 +12,7 @@ import copy
 class Airun:
     def __init__(self, model_path='best_policy_net.pth'):
         # 直接加载整个模型
-        self.model = torch.load(model_path, weights_only=False).to("cpu")
+        self.model = torch.load(model_path, weights_only=False, map_location=torch.device("cpu"))
         self.model.eval()  # 设置为评估模式
         self.env = gym_env()
 

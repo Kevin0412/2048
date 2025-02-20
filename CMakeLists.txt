@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 
 # Set the project name
-project(2048 LANGUAGES CXX CUDA)
+project(2048 LANGUAGES CXX)
 
 set(Torch_DIR ~/libtorch/share/cmake/Torch)
 

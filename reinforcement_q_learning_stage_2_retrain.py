@@ -75,11 +75,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import time
 
 import tqdm
 import numpy as np
-import multiprocessing as mp
+
+#env = gym.make("CartPole-v1", render_mode="human")
+env=game2048.gym_env()
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -122,107 +123,7 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 
-class SumTree:
-    """SumTree数据结构实现优先级的树状存储"""
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.tree = np.zeros(2 * capacity - 1)  # 树节点数=2N-1
-        self.data = np.zeros(capacity, dtype=object)  # 存储经验数据
-        self.data_pointer = 0  # 数据指针
-    
-    def add(self, priority, data):
-        """添加数据和优先级到树中"""
-        tree_idx = self.data_pointer + self.capacity - 1  # 计算叶子节点位置
-        self.data[self.data_pointer] = data  # 存储数据
-        self.update(tree_idx, priority)  # 更新树中的优先级
-        self.data_pointer = (self.data_pointer + 1) % self.capacity  # 循环覆盖
-    
-    def update(self, tree_idx, priority):
-        """更新指定位置的优先级并传播变化"""
-        change = priority - self.tree[tree_idx]
-        self.tree[tree_idx] = priority
-        while tree_idx != 0:  # 向上传播到根节点
-            tree_idx = (tree_idx - 1) // 2
-            self.tree[tree_idx] += change
-    
-    def get_leaf(self, v):
-        """根据随机值v采样叶子节点"""
-        parent_idx = 0
-        while True:
-            left_child_idx = 2 * parent_idx + 1
-            right_child_idx = left_child_idx + 1
-            if left_child_idx >= len(self.tree):
-                leaf_idx = parent_idx
-                break
-            if v <= self.tree[left_child_idx]:
-                parent_idx = left_child_idx
-            else:
-                v -= self.tree[left_child_idx]
-                parent_idx = right_child_idx
-        data_idx = leaf_idx - self.capacity + 1
-        return leaf_idx, self.tree[leaf_idx], self.data[data_idx]
-    
-class PrioritizedReplayMemory(object):
-    """带优先级的经验回放池"""
-    def __init__(self, capacity=1000000, alpha=0.6, beta=0.4, beta_increment=0.001):
-        self.alpha = alpha  # 优先级系数（0=均匀采样，1=完全优先级）
-        self.beta = beta  # 重要性采样调整系数
-        self.beta_increment = beta_increment
-        self.abs_err_upper = 1.0  # 初始TD误差上限
-        
-        self.tree = SumTree(capacity)
-    
-    def push(self, *args, priority=None):
-        """存储经验并初始化优先级（若未提供）"""
-        max_priority = np.max(self.tree.tree[-self.tree.capacity:])  # 现有最大优先级
-        if max_priority == 0:  # 空树时初始化优先级
-            max_priority = self.abs_err_upper
-        if priority is None:  # 新经验的初始优先级设为当前最大
-            priority = max_priority
-        data = Transition(*args)
-        self.tree.add(priority**self.alpha, data)  # 用alpha平滑优先级
-    
-    def sample(self, batch_size):
-        """根据优先级采样并计算重要性采样权重"""
-        batch_idx = []
-        batch_weights = []
-        batch_data = []
-        
-        segment = self.tree.tree[0] / batch_size  # 将优先级总和分成batch_size段
-        
-        self.beta = np.min([1., self.beta + self.beta_increment])  # 逐步增加beta
-        
-        min_prob = np.min(self.tree.tree[-self.tree.capacity:]) / self.tree.tree[0] + 1e-10  # 最小概率
-        max_weight = (min_prob * self.tree.capacity) ** (-self.beta)  # 最大重要性采样权重
-        
-        for i in range(batch_size):
-            a = segment * i
-            b = segment * (i + 1)
-            v = np.random.uniform(a, b)
-            idx, priority, data = self.tree.get_leaf(v)
-            
-            prob = priority / self.tree.tree[0]  # 当前样本的概率
-            weight = (prob * self.tree.capacity) ** (-self.beta)  # 重要性采样权重
-            weight /= max_weight  # 归一化
-            
-            batch_idx.append(idx)
-            batch_weights.append(weight)
-            batch_data.append(data)
-        
-        return batch_data, batch_idx, batch_weights
-    
-    def update_priorities(self, indices, errors):
-        """用新的TD误差更新优先级"""
-        errors = np.clip(np.abs(errors), 1e-4, self.abs_err_upper)  # 限制误差范围
-        for idx, err in zip(indices, errors):
-            self.tree.update(idx, err**self.alpha)
-    
-    def __len__(self):
-        """当前存储的经验数量"""
-        return min(self.tree.data_pointer, self.tree.capacity)
-
-
-'''class ReplayMemory(object):
+class ReplayMemory(object):
 
     def __init__(self,capacity=1000000):
         self.memory = []
@@ -239,7 +140,7 @@ class PrioritizedReplayMemory(object):
         return random.sample(self.memory, batch_size)
 
     def __len__(self):
-        return len(self.memory)'''
+        return len(self.memory)
 
 
 ######################################################################
@@ -389,23 +290,14 @@ if __name__=="__main__":
     # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
     # TAU is the update rate of the target network
     # LR is the learning rate of the ``AdamW`` optimizer
-    mp.set_start_method('spawn')
-    manager = mp.Manager()
-    shared_data = manager.Namespace()
-    shared_data.EPS_START = 0.
-    shared_data.EPS_END = 0.
-    shared_data.EPS_DECAY = 1000
-    shared_data.MAX_BATCH_SIZE = 64
-    MAX_BATCH_SIZE = 64
+    MAX_BATCH_SIZE = 2048
     GAMMA = 0.999
-    EPS_START = 0.0
+    EPS_START = 1.0
     EPS_END = 0.0
-    EPS_DECAY = 1000
+    EPS_DECAY = 10000
     TAU = 0.005
     LR = 3e-5
-    RESUME=True
-
-    env=game2048.gym_env()
+    RESUME=False
 
     # Get number of actions from gym action space
     n_actions = env.action_space.n
@@ -413,11 +305,11 @@ if __name__=="__main__":
     state = env.reset()
     n_observations = len(state)
 
-    shared_data.policy_net = DQN().cpu().to(torch.device("cpu"))
-    policy_net = DQN().to(torch.device("cuda"))
-    target_net = DQN().to(torch.device("cuda"))
+    memory = ReplayMemory()
+    punishment_memory = ReplayMemory(2048)
+    policy_net = DQN().to(device)
+    target_net = DQN().to(device)
     if RESUME:
-        shared_data.policy_net = torch.load("last_policy_net.pth", weights_only=False).cpu()
         policy_net = torch.load("last_policy_net.pth", weights_only=False)
         target_net = torch.load('last_target_net.pth',weights_only=False)
         """with open('replay_memory.pkl', 'rb') as f:
@@ -431,7 +323,8 @@ if __name__=="__main__":
     optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 
 
-def select_action(state,EPS_START,EPS_END,EPS_DECAY,steps_done,policy_net):
+def select_action(state):
+    global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
         math.exp(-1. * steps_done / EPS_DECAY)
@@ -452,9 +345,9 @@ def select_action(state,EPS_START,EPS_END,EPS_DECAY,steps_done,policy_net):
             # 选择动作
             action = q_values.max(1).indices
             action = action.view(-1, 1)  # 动态调整形状
-            return action,steps_done
+            return action
     else:
-        return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long),steps_done
+        return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
 
 episode_scores = []
@@ -510,144 +403,148 @@ def plot_scores(show_result=False):
 # the hyperparameter ``TAU``, which was previously defined.
 #
 
-def optimize_model(policy_net, target_net, optimizer, states, actions, rewards, next_states, GAMMA, device):
-    # 确保输入张量和模型在同一设备上
-    states = states.to(device)
-    actions = actions.to(device)
-    rewards = rewards.to(device)
-    next_states = next_states.to(device)
-    state_action_values = policy_net(states.unsqueeze(1)).gather(1, actions).squeeze(1)
+def optimize_model():
+    if len(memory)<10000:
+        return
+    BATCH_SIZE = min(MAX_BATCH_SIZE, len(memory))
+    """if len(memory) < BATCH_SIZE:
+        return"""
+    transitions = memory.sample(BATCH_SIZE)
+    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+    # detailed explanation). This converts batch-array of Transitions
+    # to Transition of batch-arrays.
+    batch = Transition(*zip(*transitions))
+
+    # Compute a mask of non-final states and concatenate the batch elements
+    # (a final state would've been the one after which simulation ended)
+    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                          batch.next_state)), device=device, dtype=torch.bool)
+    non_final_next_states = torch.cat([s for s in batch.next_state
+                                                if s is not None])
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
+
+    # 确保 state_batch 的形状是 [batch_size, 1, 4, 4]
+    if len(state_batch.shape) == 3:  # 如果 state_batch 是 [batch_size, 4, 4]
+        state_batch = state_batch.unsqueeze(1)  # 调整为 [batch_size, 1, 4, 4]
+
+    if len(non_final_next_states.shape) == 3:  # 如果 non_final_next_states 是 [batch_size, 4, 4]
+        non_final_next_states = non_final_next_states.unsqueeze(1)  # 调整为 [batch_size, 1, 4, 4]
+
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    # columns of actions taken. These are the actions which would've been taken
+    # for each batch state according to policy_net
+    state_action_values = policy_net(state_batch).gather(1, action_batch)
+
+    # Compute V(s_{t+1}) for all next states.
+    # Expected values of actions for non_final_next_states are computed based
+    # on the "older" target_net; selecting their best reward with max(1).values
+    # This is merged based on the mask, such that we'll have either the expected
+    # state value or 0 in case the state was final.
+    next_state_values = torch.zeros(BATCH_SIZE, device=device)
     with torch.no_grad():
-        next_state_values = torch.zeros_like(rewards, device=device)
-        non_final_mask = torch.tensor(tuple(s is not None for s in next_states), device=device, dtype=torch.bool)
-        non_final_next_states = torch.cat([s.unsqueeze(0) for s in next_states if s is not None]).to(device)
-        next_state_values[non_final_mask] = target_net(non_final_next_states.unsqueeze(1)).max(1).values
+        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
-    expected_state_action_values = rewards + GAMMA * next_state_values
-    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
+    # Compute Huber loss
+    criterion = nn.SmoothL1Loss()
+    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
+    # Optimize the model
     optimizer.zero_grad()
     loss.backward()
+    # In-place gradient clipping
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
 
-    td_errors = torch.abs(state_action_values - expected_state_action_values).detach().cpu().numpy()
-    return td_errors
+if __name__=="__main__":
+    ######################################################################
+    #
+    # Below, you can find the main training loop. At the beginning we reset
+    # the environment and obtain the initial ``state`` Tensor. Then, we sample
+    # an action, execute it, observe the next state and the reward (always
+    # 1), and optimize our model once. When the episode ends (our model
+    # fails), we restart the loop.
+    #
+    # Below, `num_episodes` is set to 600 if a GPU is available, otherwise 50 
+    # episodes are scheduled so training does not take too long. However, 50 
+    # episodes is insufficient for to observe good performance on CartPole.
+    # You should see the model constantly achieve 500 steps within 600 training 
+    # episodes. Training RL agents can be a noisy process, so restarting training
+    # can produce better results if convergence is not observed.
+    #
 
-def worker(env, queue, event, device, done_flag,shared_data):
-    local_memory = PrioritizedReplayMemory(capacity=100000)
-    state = env.reset()
-    state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-    terminated = False
-    episode_score = 0  # 初始化得分
-    steps_done=0
-    start_time = time.time()
-    while not done_flag.value:
-        action,steps_done = select_action(state,shared_data.EPS_START,shared_data.EPS_END,shared_data.EPS_DECAY,steps_done,shared_data.policy_net)
-        observation, reward, terminated = env.step(action.item(), with_wrong_move=True)
-        real_action = torch.tensor([[reward[1]]], device=device, dtype=torch.long)
-        reward = torch.tensor([reward[0]], device=device)
+    if torch.cuda.is_available() or torch.backends.mps.is_available():
+        num_episodes = 16384
+    else:
+        num_episodes = 50
 
-        next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
-
-        # 存储到本地内存
-        if action.item() != real_action.item():
-            local_memory.push(state, action, next_state, torch.tensor([-1], device=device), priority=1)
-        local_memory.push(state, real_action, next_state, reward, priority=0.5)
-
-        # 移动到下一个状态
-        state = next_state
-
-        # 将采样数据放入队列
-        if len(local_memory) >= shared_data.MAX_BATCH_SIZE:
-            transitions, indices, weights = local_memory.sample(shared_data.MAX_BATCH_SIZE)
-            queue.put(("data", transitions, indices, weights))
-
-            # 等待主进程的信号继续执行
-            event.wait()
-            event.clear()
-
-        if terminated:
-            print(f"线程完成一局游戏，耗时: {time.time() - start_time:.2f}秒")
-            start_time = time.time()
-            episode_score = np.log2(env.score)  # 记录最终得分
-            queue.put(("score", episode_score))  # 将得分传递给主进程
-            state = env.reset()  # 重置环境开始下一局
-            state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-            terminated = False
-
-if __name__ == "__main__":
-    # 多线程参数
-    num_threads = 2  # 线程数量
-    max_episodes = 4  # 每个线程需要完成的游戏局数
-    queue = mp.Queue()  # 用于存储采样数据
-    event = mp.Event()  # 用于同步 worker 线程
-    done_flag = mp.Value('i', 0)  # 标记第一个线程是否完成指定局数
-    best_score = 0  # 初始化最佳得分
-
-    processes = []
-    for _ in range(num_threads):
-        p = mp.Process(target=worker, args=(env, queue, event, torch.device("cpu"), done_flag,shared_data))
-        p.start()
-        processes.append(p)
-
-    episode_counter = 0  # 记录第一个线程完成的游戏局数
     max_score=0
-    while True:
-        # 从队列中获取所有线程的采样数据
-        transitions, indices, weights = [],[],[]
-        while not queue.empty():
-            item = queue.get()
-            if item[0] == "score":  # 如果是得分信息
-                _, episode_score = item
-                print(f"线程完成一局游戏，得分: {episode_score}")
-                episode_scores.append(episode_score)
+    for i_episode in tqdm.tqdm(range(num_episodes)):
+        # Initialize the environment and get its state
+        state = env.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        for t in count():
+            action = select_action(state)
+            observation, reward, terminated = env.step(action.item(),with_wrong_move=True)
+            real_action = torch.tensor([[reward[1]]], device=device, dtype=torch.long)
+            reward = torch.tensor([reward[0]], device=device)
+            done = terminated
+
+            next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+
+            # Store the transition in memory
+            if action.item()!=real_action.item():
+                memory.push(state, action, next_state, torch.tensor([-1], device=device))
+            memory.push(state, real_action, next_state, reward)
+
+            # Move to the next state
+            state = next_state
+
+            # Perform one step of the optimization (on the policy network)
+            optimize_model()
+
+            # Soft update of the target network's weights
+            # θ′ ← τ θ + (1 −τ )θ′
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+            target_net.load_state_dict(target_net_state_dict)
+            if i_episode%128==0:
+                """with open('replay_memory.pkl', 'wb') as f:
+                    pickle.dump(memory, f)
+                with open('steps_done.pkl', 'wb') as f:
+                    pickle.dump(steps_done, f)"""
+                torch.save(policy_net, 'last_policy_net.pth')
+                torch.save(target_net, 'last_target_net.pth')
+
+            if done:
+                episode_scores.append(np.log2(env.score))
                 mean_score=plot_scores()
-                if episode_counter < max_episodes:
-                    episode_counter += 1
+                # 保存模型
                 if mean_score>max_score:
                     torch.save(policy_net, 'best_policy_net.pth')
                     torch.save(target_net, 'best_target_net.pth')
                     max_score=mean_score
-                    print(f"保存了新的最佳模型，得分: {best_score}")
-            elif item[0] == "data":  # 如果是采样数据
-                _, item_transitions, item_indices, item_weights = item
-                transitions.extend(item_transitions)
-                indices.extend(item_indices)
-                weights.extend(item_weights)
+                break
 
-        # 如果第一个线程完成指定局数，触发结束信号
-        if episode_counter >= max_episodes:
-            done_flag.value = 1
-            break
-
-        # 如果队列为空，继续等待
-        if not transitions:
-            time.sleep(0.1)
-            continue
-
-        # 合并所有线程的采样数据
-        batch = Transition(*zip(*transitions))
-        states = torch.cat(batch.state).to(device)
-        actions = torch.cat(batch.action).to(device)
-        rewards = torch.cat(batch.reward).to(device)
-        next_states = torch.cat(batch.next_state).to(device)
-
-        # 优化模型
-        td_errors = optimize_model(policy_net, target_net, optimizer, states, actions, rewards, next_states, GAMMA, device)
-
-        shared_data.policy_net.load_state_dict(policy_net.state_dict())
-        shared_data.policy_net.cpu()
-
-        # 通知所有线程继续执行下一步
-        event.set()
-
-    # 终止所有线程
-    for p in processes:
-        p.terminate()
-        p.join()
-
-    print("训练完成！")
+    print('Complete')
     plot_scores(show_result=True)
     plt.ioff()
     plt.show()
+
+    ######################################################################
+    # Here is the diagram that illustrates the overall resulting data flow.
+    #
+    # .. figure:: /_static/img/reinforcement_learning_diagram.jpg
+    #
+    # Actions are chosen either randomly or based on a policy, getting the next
+    # step sample from the gym environment. We record the results in the
+    # replay memory and also run optimization step on every iteration.
+    # Optimization picks a random batch from the replay memory to do training of the
+    # new policy. The "older" target_net is also used in optimization to compute the
+    # expected Q values. A soft update of its weights are performed at every step.
+    #

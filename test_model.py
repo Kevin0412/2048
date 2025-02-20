@@ -27,6 +27,9 @@ class Airun:
             state = self.preprocess_state(state)
             q_values = self.model(state)
             action = torch.argmax(q_values).item()  # 选择Q值最大的动作
+            """while not self.env.board.moveable(self.env.action_space.actions[action]):  # 判断动作是否合法
+                q_values[0, action] = -float('inf')  # 将非法动作的Q值设为负无穷
+                action = torch.argmax(q_values).item()  # 选择第二高的动作"""
         return action
 
     def print_game_state(self, state, action, total_reward):

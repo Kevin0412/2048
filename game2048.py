@@ -5,6 +5,7 @@ import math
 import statistics
 import pickle
 from datetime import datetime
+import os
 
 class board:
     def __init__(self):
@@ -376,6 +377,8 @@ class game:
                 break
         game_data.append({"state": copy.deepcopy(self.board), "action": direction})
         now_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if not os.path.exists("human_player_games"):
+            os.makedirs("human_player_games")
         filename = f"human_player_games/{self.score}_{now_time}.pkl"
         with open(filename, "wb") as f:
             pickle.dump(game_data, f)

@@ -8,6 +8,7 @@ from reinforcement_q_learning import DQN
 import tqdm
 import pickle
 from datetime import datetime
+import statistics
 
 class MCTSNode:
     def __init__(self, game_state:board, parent=None, dqn_model=None):
@@ -83,7 +84,7 @@ class MCTSNode:
                 self.children[selected_action][(i, j, value)] = MCTSNode(child_state, self, self.dqn_model)
         return selected_action
 
-    def simulate(self, rollout_depth=8):
+    def simulate(self, rollout_depth=16):
         """使用DQN引导的混合模拟"""
         current_state = copy.deepcopy(self.game_state)
         total_reward = 0
@@ -215,10 +216,10 @@ if __name__ == "__main__":
     dqn_model.eval()  # 设置为评估模式
 
     # 初始化MCTS
-    mcts = MCTS(dqn_model=dqn_model, iterations=512)  # 每次搜索迭代500次
+    mcts = MCTS(dqn_model=dqn_model, iterations=1024)  # 每次搜索迭代500次
 
     # 运行多次游戏以评估性能
-    num_games = 32  # 运行100次游戏
+    num_games =  1024 # 运行100次游戏
     scores = []
     max_tiles = []
 
@@ -241,18 +242,23 @@ if __name__ == "__main__":
             # 执行动作
             env.step(best_action)
             print(env.board)
+        
+        game_data.append({"state": copy.deepcopy(env.board), "action": best_action})
 
         # 保存游戏状态和动作到文件
         now_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"mtcs_games/{env.score}_{now_time}.pkl"
+        filename = f"mcts_games/{env.score}_{now_time}.pkl"
         with open(filename, "wb") as f:
             pickle.dump(game_data, f)
 
         # 记录游戏结果
-        scores.append(env.score)
+        scores.append(np.log2(env.score))
         max_tiles.append(env.board.max_tile())
 
     # 统计结果
+    mean_log_score = statistics.mean(scores)
+    stdev_log_score = statistics.stdev(scores)
+    print(mean_log_score, "±", stdev_log_score)
     avg_score = np.mean(scores)
     avg_max_tile = np.mean(max_tiles)
     max_score = np.max(scores)

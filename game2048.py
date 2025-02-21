@@ -3,6 +3,8 @@ import copy
 
 import math
 import statistics
+import pickle
+from datetime import datetime
 
 class board:
     def __init__(self):
@@ -108,6 +110,8 @@ class board:
         if not isinstance(direction,str):
             print(direction,"is invalid")
             raise
+        if not direction in ["w","a","s","d"]:
+            return False
         output=False
         if direction=='d':
             self.rotate(2)
@@ -348,6 +352,7 @@ class game:
                 break
 
     def play_in_terminal(self):
+        game_data = []
         self.new_bolck()
         self.new_bolck()
         while True:
@@ -358,6 +363,7 @@ class game:
             direction=input('w:up a:left s:down d:right ')
             if self.board.moveable(direction):
                 #self.reward+=(0 if self.board.move_score(direction)==0 else math.log2(self.board.move_score(direction)) if self.score==0 else math.log2(self.board.move_score(direction)/self.score+1))
+                game_data.append({"state": copy.deepcopy(self.board), "action": direction})
                 self.move2(direction)
                 self.new_bolck()
                 self.reward += self.board.reward()
@@ -368,6 +374,12 @@ class game:
             if self.end():
                 print(self)
                 break
+        game_data.append({"state": copy.deepcopy(self.board), "action": direction})
+        now_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"human_player_games/{self.score}_{now_time}.pkl"
+        with open(filename, "wb") as f:
+            pickle.dump(game_data, f)
+
         print("game over")
 
     def reset(self):
@@ -453,8 +465,8 @@ if __name__=="__main__":
     print(a)
     print(a.moveable("s"))"""
     
-    #game().play_in_terminal()
-    import tqdm
+    game().play_in_terminal()
+    '''import tqdm
     scores=[]
     a=gym_env()
     for i in tqdm.tqdm(range(1000)):
@@ -484,5 +496,5 @@ if __name__=="__main__":
     plt.ylabel('Frequency')
     plt.title('Distribution of log2(score)')
     plt.show()
-
+'''
 

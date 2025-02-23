@@ -84,7 +84,7 @@ class MCTSNode:
                 self.children[selected_action][(i, j, value)] = MCTSNode(child_state, self, self.dqn_model)
         return selected_action
 
-    def simulate(self, rollout_depth=16):
+    def simulate(self, rollout_depth=8):
         """使用DQN引导的混合模拟"""
         current_state = copy.deepcopy(self.game_state)
         total_reward = 0
@@ -94,7 +94,7 @@ class MCTSNode:
                 break
                 
             # 80%概率使用DQN策略，20%随机
-            if np.random.rand() < 0.0:  
+            if np.random.rand() < 0.5:  
                 with torch.no_grad():
                     state_tensor = torch.FloatTensor(current_state.normalize_2d()).unsqueeze(0).unsqueeze(0)
                     action_index = torch.argmax(self.dqn_model(state_tensor)).item()
@@ -212,11 +212,11 @@ class MCTS:
 
 if __name__ == "__main__":
     # 加载预训练的DQN模型
-    dqn_model = torch.load("models/7/best_policy_net.pth",weights_only=False, map_location=torch.device("cpu"))  # 确保模型路径正确
+    dqn_model = torch.load("best_policy_net.pth",weights_only=False, map_location=torch.device("cpu"))  # 确保模型路径正确
     dqn_model.eval()  # 设置为评估模式
 
     # 初始化MCTS
-    mcts = MCTS(dqn_model=dqn_model, iterations=1024)  # 每次搜索迭代500次
+    mcts = MCTS(dqn_model=dqn_model, iterations=512)  # 每次搜索迭代500次
 
     # 运行多次游戏以评估性能
     num_games =  1024 # 运行100次游戏

@@ -183,21 +183,21 @@ class board:
             self.rotate(1)
         return new
     
-    def max_in_corner(self):
-        sorted_board=sorted(self.flatten(), reverse=True)
-        return sorted_board[0]==self.board[0][0] or sorted_board[0]==self.board[0][3] or sorted_board[0]==self.board[3][0] or sorted_board[0]==self.board[3][3]
-    
-    def max_tile(self):
-        return 2**max(self.flatten())
-    
-    def num_blocks(self):
-        return sum([1 for a in self.flatten() if a!=0])
-    
     def normalize(self):
         return [a/17 for a in self.flatten()]
     
     def normalize_2d(self):
         return [[a/17 for a in row] for row in self.board]
+        
+    def max_tile(self):
+        return 2**max(self.flatten())
+    
+    def max_in_corner(self):
+        sorted_board=sorted(self.flatten(), reverse=True)
+        return sorted_board[0]==self.board[0][0] or sorted_board[0]==self.board[0][3] or sorted_board[0]==self.board[3][0] or sorted_board[0]==self.board[3][3]
+    
+    def num_blocks(self):
+        return sum([1 for a in self.flatten() if a!=0])
     
     def snake(self):
         reward=1

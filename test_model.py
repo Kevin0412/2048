@@ -8,6 +8,9 @@ import math
 import statistics
 import tqdm
 import copy
+import pickle
+from datetime import datetime
+import os
 
 class Airun:
     def __init__(self, model_path='best_policy_net.pth'):
@@ -44,9 +47,11 @@ class Airun:
         state = self.env.reset()
         done = False
         total_reward = 0
+        game_data = []
 
         while not done:
             action = self.choose_action(state)
+            game_data.append({"state": copy.deepcopy(state), "action": action})
             next_state, reward, done = self.env.step(action)
             total_reward += reward
 
@@ -57,6 +62,14 @@ class Airun:
                     input()
 
             state = next_state
+        game_data.append({"state": copy.deepcopy(state), "action": action})
+        if not os.path.exists("ai_games"):
+            os.makedirs("ai_games")
+        now=datetime.now()
+        now_time = now.strftime("%Y%m%d_%H%M%S")+ f"{now.microsecond // 1000:03d}"
+        filename = f"ai_games/{self.env.score}_{now_time}.pkl"
+        with open(filename, "wb") as f:
+            pickle.dump(game_data, f)
         if show:
             print(self.env)
         return self.env
@@ -64,7 +77,7 @@ class Airun:
 if __name__ == "__main__":
     airun = Airun(model_path='best_policy_net.pth')
     scores=[]
-    for i in tqdm.tqdm(range(1000)):
+    for i in tqdm.tqdm(range(10000)):
         scores.append(copy.deepcopy(airun.run(show=False)))
     scores.sort(key=lambda x: x.score, reverse=True)
     log_scores = [math.log2(score.score) for score in scores]

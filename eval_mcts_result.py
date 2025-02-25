@@ -5,7 +5,7 @@ import pickle
 from game2048 import gym_env, board
 
 # 步骤1：读取文件夹中的所有文件名
-folder_path = 'mcts_games'  # 替换为你的文件夹路径
+folder_path = 'mcts_games/4'  # 替换为你的文件夹路径
 file_names = os.listdir(folder_path)
 
 # 步骤2：从每个文件名中提取最前面的整数
@@ -33,7 +33,7 @@ log2_values = [math.log2(i) for i in integers]
 
 # 步骤4：求这些对数值的平均值和标准差
 mean_log2 = np.mean(log2_values)
-std_dev_log2 = np.std(log2_values)
+std_dev_log2 = np.std(log2_values, ddof=1)
 
 # 输出结果
 print(f"平均值 ± 标准差: {mean_log2} ± {std_dev_log2}")

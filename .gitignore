@@ -1,6 +1,7 @@
-__pycache__/*
+__pycache__/
 *.pth
 *.pkl
 build/
 *.swp
-
+*.doc
+.vscode/
